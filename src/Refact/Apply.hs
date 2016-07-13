@@ -203,7 +203,7 @@ parseMatch :: Parser (GHC.LMatch GHC.RdrName (GHC.LHsExpr GHC.RdrName))
 parseMatch dyn fname s =
   case parseBind dyn fname s of
     Right (as, GHC.L l GHC.FunBind{fun_matches}) ->
-      case GHC.mg_alts fun_matches of
+      case unLoc $ GHC.mg_alts fun_matches of
            [x] -> Right (as, x)
            _   -> Left (l, "Not a single match")
     Right (_, GHC.L l _) -> Left (l, "Not a funbind")
@@ -221,31 +221,27 @@ substTransform m ss = everywhereM (mkM (exprSub m ss)
 
 stmtSub :: Data a => a -> [(String, GHC.SrcSpan)] -> Stmt -> M Stmt
 stmtSub m subs old@(GHC.L _ (BodyStmt (GHC.L _ (HsVar name)) _ _ _) ) =
-  resolveRdrName m (findStmt m) old subs name
+  resolveRdrName m (findStmt m) old subs (unLoc name)
 stmtSub _ _ e = return e
 
 patSub :: Data a => a -> [(String, GHC.SrcSpan)] -> Pat -> M Pat
 patSub m subs old@(GHC.L _ (VarPat name)) =
-  resolveRdrName m (findPat m) old subs name
+  resolveRdrName m (findPat m) old subs (unLoc name)
 patSub _ _ e = return e
 
 typeSub :: Data a => a -> [(String, GHC.SrcSpan)] -> Type -> M Type
 typeSub m subs old@(GHC.L _ (HsTyVar name)) =
-  resolveRdrName m (findType m) old subs name
+  resolveRdrName m (findType m) old subs (unLoc name)
 typeSub _ _ e = return e
 
 exprSub :: Data a => a -> [(String, GHC.SrcSpan)] -> Expr -> M Expr
 exprSub m subs old@(GHC.L _ (HsVar name)) =
-  resolveRdrName m (findExpr m) old subs name
+  resolveRdrName m (findExpr m) old subs (unLoc name)
 exprSub _ _ e = return e
 
 identSub :: Data a => a -> [(String, GHC.SrcSpan)] -> Name -> M Name
 identSub m subs old@(GHC.L _ name) =
-  resolveRdrName' subst (findName m) old subs name
-  where
-    subst :: Name -> (Name, Pat) -> M Name
-    subst (mkAnnKey -> oldkey) (n, p)
-      = n <$ modify (\r -> replaceAnnKey r oldkey (mkAnnKey p) (mkAnnKey n) (mkAnnKey p))
+  resolveRdrName m (findName m) old subs name
 
 resolveRdrName' ::
                   (a -> b -> M a)  -> (SrcSpan -> b) -> a
@@ -334,11 +330,8 @@ findDecl = findGen "decl"
 findStmt :: Data a => a -> SrcSpan -> Stmt
 findStmt = findGen "stmt"
 
-findName :: Data a => a -> SrcSpan -> (Name, Pat)
-findName m ss =
-  case findPat m ss of
-       p@(GHC.L l (VarPat n)) -> (GHC.L l n, p)
-       GHC.L l _ -> error $ "Not var pat: " ++ showGhc l
+findName :: Data a => a -> SrcSpan -> Name
+findName = findGen "name"
 
 
 findLargestExpression :: SrcSpan -> GHC.Located ast -> Maybe (GHC.Located ast)
